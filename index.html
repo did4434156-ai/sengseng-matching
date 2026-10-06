@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>💌셍셍 소개팅 매물 모으기</title>
+<style>
+:root{--bg:#fbf7f5;--card:#fff;--tx:#2b2326;--sub:#7a6a70;--ac:#d6456b;--bd:#eadfe2}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1618;--card:#271f22;--tx:#f3eaed;--sub:#b2a2a8;--ac:#ef6f92;--bd:#3a2f33}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;line-height:1.5}
+main{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:8px 0 4px}p.s{color:var(--sub);margin:0 0 12px;font-size:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:12px}.ph{width:84px;height:84px;border-radius:10px;background:var(--bd);object-fit:cover;flex:none;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:12px}
+.nm{font-weight:700}.meta{color:var(--sub);font-size:13px}
+.why{font-size:13px;margin-top:6px;padding:8px;border-radius:8px;background:var(--bg)}
+label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font:inherit}
+textarea{min-height:70px}
+.btn{padding:11px 16px;border:0;border-radius:10px;background:var(--ac);color:#fff;font:inherit;cursor:pointer;margin-top:12px}
+.btn.g{background:transparent;color:var(--sub);border:1px solid var(--bd);padding:5px 10px;margin:0 6px 0 0;font-size:12px}
+.btn:disabled{opacity:.5}.note{font-size:12px;color:var(--sub);margin-top:6px}
+</style></head><body><main>
+<h1>💌셍셍 소개팅 매물 모으기</h1>
+<p class="s">소개팅 주선이 편하도록 사이트를 만들었어요!<br>사진은 관리자만 볼 수 있어요</p>
+<div id="app"></div></main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getFirestore,collection,addDoc,getDocs,deleteDoc,doc,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const CONFIG={
+  apiKey: "AIzaSyA1...",
+  authDomain: ":firebaseapp.com",
+  projectId: "saengsaeng-XXXXX",
+  appId: "1:XXXXXX:web:XXXXXX"
+};
+
+
+const $=(t,a={},...k)=>{const e=document.createElement(t);for(const[x,v]of Object.entries(a)){if(x==='class')e.className=v;else if(x.startsWith('on'))e[x]=v;else e.setAttribute(x,v)}k.flat().forEach(c=>e.append(c));return e};
+const app=document.getElementById('app'),CY=new Date().getFullYear();
+const YEARS=['선택 안 함',...Array.from({length:21},(_,i)=>String(2005-i))];
+const YRS=['제한 없음',...Array.from({length:11},(_,i)=>i+'살')];
+const INFO=[['name','이름(별명)','t'],['gender','성별',['여성','남성']],['contact','전화번호 (카톡 아이디)','t'],['birth','출생연도',YEARS],['height','키 (cm)','n'],['region','사는 곳','t'],['job','직업','t'],['drink','술',['안 마심','가끔','자주']],['smoke','담배',['비흡연','흡연','전자담배']],['religion','종교',['무교','기독교','천주교','불교','기타']],['intro','소개','a'],['by','주선자','t']];
+const IDEAL=[['gender','찾는 성별',['여성','남성','상관없음']],['older','연상 (본인보다 나이 많은) 최대',YRS],['younger','연하 (본인보다 어린) 최대',YRS],['region','사는 곳','t'],['job','직업','t'],['drink','술',['안 마심','가끔은 괜찮음','상관없음']],['smoke','담배',['비흡연','전자담배는 가능','상관없음']],['religion','종교',['상관없음','무교','기독교','천주교','불교','기타']],['must','꼭 필요한 조건','t'],['avoid','절대 안 되는 것','t'],['memo','기타 메모','a']];
+const build=(defs,store,box)=>defs.forEach(([k,l,t])=>{const e=Array.isArray(t)?$('select',{},...t.map(x=>$('option',{},x))):t==='a'?$('textarea'):$('input',{type:t==='n'?'number':'text'});store[k]=e;box.append($('label',{},l),e)});
+const shrink=f=>new Promise((ok,no)=>{const im=new Image();im.onload=()=>{const r=Math.min(1,480/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*r;c.height=im.height*r;c.getContext('2d').drawImage(im,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',.7))};im.onerror=no;im.src=URL.createObjectURL(f)});
+
+if(!CONFIG.projectId){app.append($('div',{class:'card'},'아직 Firebase 설정이 안 되어 있어요. 설정방법.md를 따라 index.html 위쪽의 CONFIG를 채워 주세요.'))}
+else{
+  const fb=initializeApp(CONFIG),db=getFirestore(fb),auth=getAuth(fb);
+  const show=()=>{app.replaceChildren(location.hash==='#admin'?adminView():publicView())};
+  addEventListener('hashchange',show);show();
+
+  function publicView(){
+    const f={},g={},box=$('div',{class:'card'}),err=$('div',{class:'note',style:'color:var(--ac)'});
+    box.append($('div',{class:'nm'},'1. 본인 정보'));build(INFO,f,box);
+    const ph=$('input',{type:'file',accept:'image/*'});
+    box.append($('label',{},'사진 (선택)'),ph,$('div',{class:'note'},'사진·연락처·주선자는 관리자만 볼 수 있어요.'),$('div',{class:'nm',style:'margin-top:18px'},'2. 이상형'));
+    build(IDEAL,g,box);
+    const b=$('button',{class:'btn'},'등록하기');
+    b.onclick=async()=>{
+      const v=(o,k)=>o[k].value.trim();
+      if(!v(f,'name')){err.textContent='이름(별명)을 입력해 주세요.';return}
+      b.disabled=true;b.textContent='등록 중…';err.textContent='';
+      try{
+        const d={ideal:{}};INFO.forEach(([k])=>d[k]=v(f,k));IDEAL.forEach(([k])=>d.ideal[k]=v(g,k));
+        d.birth=d.birth==='선택 안 함'?0:+d.birth;
+        d.photo=ph.files[0]?await shrink(ph.files[0]):'';
+        d.createdAt=serverTimestamp();
+        await addDoc(collection(db,'people'),d);
+        app.replaceChildren($('div',{class:'card'},'등록되었어요! 소개해 줘서 고마워요 🙌'));
+      }catch(e){err.textContent='등록 실패: '+(e.message||e.code);b.disabled=false;b.textContent='등록하기'}
+    };
+    box.append(err,$('div',{class:'note'},'본인만 등록해주세요'),b);
+    return box;
+  }
+
+  function adminView(){
+    const box=$('div');
+    onAuthStateChanged(auth,async u=>{
+      box.replaceChildren();
+      if(!u){
+        const em=$('input',{type:'email',placeholder:'관리자 이메일'}),pw=$('input',{type:'password',placeholder:'비밀번호'}),err=$('div',{class:'note',style:'color:var(--ac)'});
+        box.append($('div',{class:'card'},$('b',{},'관리자 로그인'),em,pw,err,$('button',{class:'btn',onclick:async()=>{try{await signInWithEmailAndPassword(auth,em.value,pw.value)}catch(e){err.textContent='로그인 실패: '+(e.code||e.message)}}},'로그인')));
+        return;
+      }
+      box.append($('button',{class:'btn g',onclick:()=>signOut(auth)},'로그아웃'));
+      try{
+        const snap=await getDocs(query(collection(db,'people'),orderBy('createdAt','desc')));
+        const people=snap.docs.map(d=>({id:d.id,...d.data()}));
+        if(!people.length)box.append($('div',{class:'card'},'아직 등록된 매물이 없어요.'));
+        people.forEach(p=>box.append(card(p,people)));
+      }catch(e){box.append($('div',{class:'card'},'불러오기 실패(관리자 계정/규칙을 확인해 주세요): '+(e.code||e.message)))}
+    });
+    return box;
+  }
+
+  const ageOf=p=>p.birth?CY-p.birth:'';
+  const idealLine=i=>i?[i.gender?i.gender+' 찾음':'',i.older&&i.older!=='제한 없음'?'연상 최대 '+i.older:'',i.younger&&i.younger!=='제한 없음'?'연하 최대 '+i.younger:'',i.region,i.job,i.drink?'술 '+i.drink:'',i.smoke?'담배 '+i.smoke:'',i.religion?'종교 '+i.religion:'',i.must?'필수: '+i.must:'',i.avoid?'절대 안 되는 것: '+i.avoid:'',i.memo].filter(Boolean).join(' · '):'';
+  function card(p,people){
+    const photo=p.photo?$('img',{class:'ph',src:p.photo}):$('div',{class:'ph'},'사진 없음');
+    const copy=$('button',{class:'btn g',onclick:async()=>{await navigator.clipboard.writeText(prompt(p,people));copy.textContent='복사됨! Claude에 붙여넣으세요'}},'궁합 순위용 프롬프트 복사');
+    const del=$('button',{class:'btn g',onclick:async()=>{if(!confirm('삭제할까요?'))return;await deleteDoc(doc(db,'people',p.id));show()}},'삭제');
+    return $('div',{class:'card'},$('div',{class:'row'},photo,$('div',{style:'flex:1;min-width:0'},
+      $('div',{class:'nm'},p.name),
+      $('div',{class:'meta'},[p.gender,p.birth?p.birth+'년생('+ageOf(p)+'세)':'',p.height?p.height+'cm':'',p.region,p.job,p.drink?'술 '+p.drink:'',p.smoke?'담배 '+p.smoke:'',p.religion?'종교 '+p.religion:''].filter(Boolean).join(' · ')),
+      $('div',{class:'meta'},'📞 '+(p.contact||'-')+'　주선자: '+(p.by||'-')),
+      $('div',{style:'margin-top:4px;font-size:14px;white-space:pre-wrap'},p.intro||''),
+      $('div',{class:'meta',style:'margin-top:4px'},'💭 '+idealLine(p.ideal)),
+      $('div',{style:'margin-top:8px'},copy,del))));
+  }
+  function prompt(p,people){
+    const info=q=>({이름:q.name,성별:q.gender,나이:ageOf(q),키:q.height,사는곳:q.region,직업:q.job,술:q.drink,담배:q.smoke,종교:q.religion,소개:q.intro,이상형:q.ideal});
+    return '기준 인물과 후보들의 소개팅 궁합 순위를 매겨줘. 규칙: 1) 기준 인물의 이상형 "찾는 성별"과 후보 성별이 맞지 않거나, 후보의 이상형 "찾는 성별"이 기준 인물 성별과 맞지 않으면 점수를 낮게 주고 뒤로 보내. 2) 연상/연하 최대는 상대가 본인보다 최대 몇 살까지 많거나 어려도 되는지를 뜻하니 두 사람의 나이로 직접 계산해. 3) 양쪽 이상형(사는 곳, 직업, 술, 담배, 종교, 꼭 필요한 조건, 절대 안 되는 것)에 서로가 얼마나 맞는지를 모두 반영해. 4) 정보가 부족하면 추측하지 말고 그렇다고 써. 각 후보에 0~100점과 한국어 한두 문장 이유를 붙여 점수 높은 순으로 정리해 줘.\n\n기준 인물:\n'+JSON.stringify(info(p))+'\n\n후보:\n'+JSON.stringify(people.filter(q=>q.id!==p.id).map(info));
+  }
+}
+</script></body></html>
